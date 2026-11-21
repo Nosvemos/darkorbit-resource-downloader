@@ -170,4 +170,4 @@ internal/state/             .app-state.json
 
 ## License
 
-Not yet specified.
+The source code is released under the [MIT License](LICENSE). This license covers the downloader itself, not the game assets it downloads.
