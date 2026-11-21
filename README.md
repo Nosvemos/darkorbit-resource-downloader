@@ -1,165 +1,173 @@
 # DarkOrbit Resource Downloader
 
-A premium, high-performance Go-based command-line interface (CLI) for mirroring, validating, and syncing resource files from `darkorbit.com` (and compatible clone game servers). It supports manifest parsing, parallel asset downloading, adaptive rate-limiting mitigation, dynamic concurrency auto-tuning, and robust local state persistence.
+[![CI](https://github.com/Nosvemos/Darkorbit-Resource-Downloader/actions/workflows/ci.yml/badge.svg)](https://github.com/Nosvemos/Darkorbit-Resource-Downloader/actions/workflows/ci.yml)
+[![Release](https://github.com/Nosvemos/Darkorbit-Resource-Downloader/actions/workflows/release.yml/badge.svg)](https://github.com/Nosvemos/Darkorbit-Resource-Downloader/actions/workflows/release.yml)
 
----
+A command-line tool that mirrors the static resource files of DarkOrbit (`darkorbit.com`, or a compatible server via `--base-url`) into a local directory. It reads the game's `filecollection` XML manifests, downloads the files they list in parallel, verifies each download against the manifest hash, and keeps a small state file so later runs only fetch what changed.
 
-## Key Features
+> **Disclaimer:** This is an unofficial project and is not affiliated with, endorsed by, or connected to Bigpoint. All downloaded game assets remain the property of their respective owners.
 
-- **Manifest Parsing:** Seamlessly parses `filecollection` XML manifests to discover and map server-side game assets.
-- **Parallel Downloading:** Leverages Go's high-concurrency capabilities to download multiple files in parallel.
-- **Dynamic Rate-Limit Mitigation:** Features a built-in global request pacer that paces sequential HTTP triggers to prevent server throttle responses.
-- **Adaptive Concurrency Auto-Tuner:** Automatically decreases download concurrency when encountering HTTP `429` (Too Many Requests) or `503` (Service Unavailable) errors, and slowly increases it again during stable successful streaks.
-- **Flexible Category Filters:** Supports targeted synchronization for specific game components (e.g. `spacemap`, `do_img`, `core`, `templates`, `unityApi`, `flashAPI`, `resources`).
-- **Comprehensive Localization Syncing:** Fetches assets for specific languages (`--languages=en,de,tr`) or automatically discovers and downloads every available game localization seed (`--languages=all`).
-- **GitHub Actions Release Pipeline:** Ready-to-go CI/CD workflow to compile version-linked binaries for Windows and release them directly to GitHub.
+## Installation
 
----
+### Prebuilt binaries
 
-## Project Structure
+Download an archive for your platform from the [GitHub Releases](https://github.com/Nosvemos/Darkorbit-Resource-Downloader/releases) page:
 
-```
-├── .github/workflows/
-│   └── release.yml        # CI/CD automated build and release pipeline
-├── cmd/
-│   └── main.go            # Command-line entry point and signal handler
-├── internal/
-│   ├── app/               # Application run loop, reporting, console output, and planning
-│   ├── discovery/         # Bootstrap seed mapping and language discovery
-│   ├── downloader/        # Adaptive pacer and dynamic parallel HTTP downloading
-│   ├── integrity/         # MD5/SHA manifest-based hash validation
-│   ├── manifest/          # XML filecollection parser
-│   ├── model/             # Shared data definitions and model structs
-│   └── state/             # Local state tracking (.app-state.json)
-└── tests/                 # Full suite of automated unit and integration tests
+- `darkorbit-downloader_<version>_windows_<arch>.zip`
+- `darkorbit-downloader_<version>_linux_<arch>.tar.gz`
+- `darkorbit-downloader_<version>_darwin_<arch>.tar.gz`
+
+`<arch>` is `amd64` or `arm64`. Each release also contains `checksums.txt` with the SHA-256 sum of every archive, e.g. `sha256sum -c checksums.txt --ignore-missing`.
+
+### With `go install`
+
+Requires Go 1.26 or later:
+
+```bash
+go install github.com/Nosvemos/Darkorbit-Resource-Downloader/cmd/darkorbit-downloader@latest
 ```
 
----
+### Build from source
 
-## Commands Reference
+```bash
+git clone https://github.com/Nosvemos/Darkorbit-Resource-Downloader.git
+cd Darkorbit-Resource-Downloader
+make build                 # writes bin/darkorbit-downloader (.exe on Windows)
+```
 
-The CLI is structured around clear execution commands:
+Without `make`:
 
-| Command | Action | Recommended Use Cases |
+```bash
+go build -trimpath -o bin/darkorbit-downloader ./cmd/darkorbit-downloader
+```
+
+The version string is injected with
+`-ldflags "-X github.com/Nosvemos/Darkorbit-Resource-Downloader/internal/app.Version=v1.2.3"`
+(`make build` does this from `git describe`). Without it, `version` falls back to the module version or VCS revision recorded by the Go toolchain.
+
+## Usage
+
+```
+darkorbit-downloader <command> [flags]
+```
+
+Running the program without a command prints the usage text and exits with code 2. On Windows, when started by double-clicking, it waits for Enter so the text can be read.
+
+### Commands
+
+| Command | Description |
+| :--- | :--- |
+| `sync` | Fetches the manifests and core files, then downloads every selected resource that is missing, changed, or fails its hash check. |
+| `plan` | Fetches the manifests (not the core `.swf` files or assets) and prints what `sync` would download and why. Writes no assets. |
+| `fetch-manifests` | Fetches the manifests, language files and templates only. |
+| `verify` | Checks the local mirror against the local manifests: reports missing files and fully re-hashes every file that has a manifest hash. Works offline, except that `--languages=all` contacts the server to discover the language list. |
+| `version`, `--version` | Prints one line: `darkorbit-downloader <version> (<os>/<arch>, <go version>)`. |
+| `help`, `-h`, `--help` | Prints the usage text. `<command> -h` does the same. |
+
+The command must be the first argument; flags follow it.
+
+### Flags
+
+All commands accept the same flags.
+
+| Flag | Default | Description |
 | :--- | :--- | :--- |
-| `sync` | Fetches the latest manifests/metadata seeds and downloads all missing or outdated game resources. | Primary command used to keep the local mirror fully synchronized with the live server. |
-| `plan` | Performs the entire sync sequence *except* downloading actual assets. Prints a complete summary of planned downloads. | Used to inspect size, category counts, and sync plans without writing any large game files. |
-| `fetch-manifests` | Downloads only the manifest and XML template files, bypassing heavy graphics assets. | Ideal for scanning structural changes or updating local manifests rapidly. |
-| `verify` | Compares all local files against the currently stored local manifests, reporting missing files and hash mismatches. | Offline integrity checking to detect corrupted assets. |
-| `version` | Displays the binary version, runtime Go compiler version, target OS, and architecture. | Verifying compile-time information and environment context. |
+| `--base-url` | `https://www.darkorbit.com` | Server to mirror. Must be an `http` or `https` URL with a host. |
+| `--output` | `darkorbit-files` | Mirror directory, relative to the current directory unless absolute. |
+| `--category` | `all` | Comma-separated categories: `all`, `spacemap`, `do_img`, `core`, `templates`, `unityApi`, `flashAPI`, `resources`. Unknown names are rejected. |
+| `--languages` | `en` | Comma-separated language codes (e.g. `en,de,tr`), or `all` to use every language linked from the server's start page (falling back to the languages already present locally if that fails). |
+| `--concurrency` | `8` | Maximum parallel downloads. Must be at least 1. |
+| `--min-concurrency` | `1` | Lowest concurrency the auto-tuner may reduce to. Must be between 1 and `--concurrency`. |
+| `--auto-tune-concurrency` | `true` | Lower concurrency after HTTP 429/503 responses and raise it again after a run of successes. |
+| `--request-interval` | `250ms` | Minimum delay between starting two requests (Go duration, e.g. `0s`, `500ms`, `1s`). Must not be negative. |
+| `--force` | `false` | Plan every selected resource for download, ignoring local files and state. |
+| `--log-file` | `<output>/app.log` | Plain-text copy of the output (colour codes removed), appended to on every run. `--log-file ""` disables it. |
+| `--no-color` | `false` | Disable coloured output. Setting the `NO_COLOR` environment variable has the same effect. |
 
----
+### Examples
 
-## Command-Line Flags (Arguments)
-
-Fine-tune Downloader behavior using standard command-line flags.
-
-| Flag | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `--base-url` | `string` | `https://www.darkorbit.com` | The base URL of the targeted game server. Allows mirroring private clone servers (e.g. `https://pinkgalaxy.net`). |
-| `--output` | `string` | `darkorbit-files` | Output directory where the downloaded asset structure is written. |
-| `--category` | `string` | `all` | Comma-separated list of asset categories to download or verify. Supported: `spacemap`, `do_img`, `core`, `templates`, `unityApi`, `flashAPI`, `resources`, or `all`. |
-| `--languages` | `string` | `en` | Comma-separated localization codes to sync (e.g., `en,de,tr`) or `all` to auto-discover all available languages. |
-| `--concurrency` | `int` | `8` | The maximum number of concurrent download threads/workers. |
-| `--min-concurrency` | `int` | `1` | Lower limit the dynamic auto-concurrency tuner is allowed to scale down to under heavy rate-limiting pressure. |
-| `--auto-tune-concurrency` | `bool` | `true` | Enables/disables the dynamic concurrency auto-tuner. |
-| `--request-interval` | `duration` | `250ms` | Minimum enforced delay between sequential request launches (e.g. `100ms`, `500ms`, `1s`) to smooth out request bursts. |
-| `--force` | `bool` | `false` | If enabled, forces redownloading of every planned asset even if its size, path, and hash match local states. |
-| `--log-file` | `string` | `app.log` | Local path where execution history is logged. Pass an empty string (`""`) to disable logging to disk. |
-
----
-
-## Usage Examples
-
-### 1. Perform a Full Sync with Dynamic Tuning
-Sync all available files, utilizing 8 workers which will automatically scale down if the server rate-limits:
 ```bash
-go run ./cmd sync --category=all --concurrency=8 --auto-tune-concurrency=true
+# Full sync of the default English resources
+darkorbit-downloader sync
+
+# A gentler sync against another server
+darkorbit-downloader sync --base-url https://example.com --request-interval 500ms --concurrency 4
+
+# Several languages
+darkorbit-downloader sync --languages en,de,tr
+
+# See what would be downloaded for the spacemap category
+darkorbit-downloader plan --category spacemap
+
+# Check an existing mirror
+darkorbit-downloader verify --output darkorbit-files
 ```
 
-### 2. Gentle Sync for Clone Sites
-Space out request starts to 500ms to be extremely gentle on a private server's security firewall:
+### Files
+
+Everything is written below `--output` (default `./darkorbit-files`):
+
+| Path | Contents |
+| :--- | :--- |
+| `<output>/...` | The mirrored files, using the server's directory layout. |
+| `<output>/.app-state.json` | State: for every verified resource, its manifest hash, URL, size and modification time. Written atomically. If it is corrupt, a warning is printed and it is rebuilt. |
+| `<output>/app.log` | Log file (see `--log-file`). |
+| `<output>/**/*.part` | Temporary download files. Removed at the start of every `sync`. |
+
+Manifest entries whose path is empty, absolute, contains `:` or a backslash, or would escape the output directory (`../`) are skipped with a warning and never touched on disk. Resource paths that differ only in letter case are treated as the same file.
+
+### How files are checked
+
+DarkOrbit manifests publish an MD5 digest per file with its last byte replaced by `00`. A file matches when its MD5, with the last byte replaced by `00` in the same way, equals the manifest hash (case-insensitive). If a manifest hash does not end in `00`, the full MD5 is compared instead.
+
+- **Downloads** are hashed while they are written to a `.part` file and are moved into place only if they match; a mismatch is retried once and then reported as a hash-mismatch failure.
+- **`sync` and `plan`** skip re-hashing a local file when its size and modification time match the state file and its manifest hash has not changed. Otherwise the file is hashed. `--force` downloads everything.
+- **`verify`** always re-hashes every file.
+
+Failed requests are retried with backoff (up to 6 attempts) for network errors, stalled transfers (no data for 30 seconds), HTTP 408, 429 and 5xx. A `Retry-After` header is honoured.
+
+Missing required files (the core `.swf` files, `crossdomain.xml` and the `spacemap/xml` manifests) abort a sync. Optional manifests and per-language files that the server does not have are skipped with a message.
+
+### Exit codes
+
+| Code | Meaning |
+| :--- | :--- |
+| `0` | Success. |
+| `1` | Runtime error (network, file system, missing required file). |
+| `2` | Usage error (no or unknown command, invalid flag). |
+| `3` | `verify` found missing, mismatched or unreadable files or unparsable manifests, or some `sync` downloads failed. |
+| `130` | Interrupted (Ctrl+C). |
+
+Pressing Ctrl+C once stops a sync cleanly: in-flight downloads are abandoned, finished ones are recorded in the state file, and the program exits with code 130. Pressing it a second time terminates immediately.
+
+## Development
+
 ```bash
-go run ./cmd sync --base-url=https://pinkgalaxy.net --request-interval=500ms --concurrency=4
+make test    # go test -race -count=1 ./...
+make lint    # golangci-lint run ./... (configuration in .golangci.yml)
+make cover   # tests with a coverage summary
+make tidy    # go mod tidy
 ```
 
-### 3. Sync Specific Languages
-Synchronize only English, German, and Turkish localized assets:
-```bash
-go run ./cmd sync --languages=en,de,tr
+Layout:
+
+```
+cmd/darkorbit-downloader/   entry point (signals, console setup)
+internal/app/               command line, sync/plan/verify logic, output
+internal/discovery/         seed manifests and language discovery
+internal/downloader/        HTTP client, pacing, retries, concurrency tuning
+internal/integrity/         manifest hash comparison
+internal/manifest/          filecollection XML parser
+internal/model/             shared types
+internal/safepath/          safe resolution of server-supplied paths
+internal/state/             .app-state.json
 ```
 
-### 4. Create a Dry-Run Sync Plan
-See exactly which assets would be downloaded due to hash mismatch or missing files:
-```bash
-go run ./cmd plan --category=spacemap
-```
+### CI and releases
 
-### 5. Validate Local Mirror Offline
-Run an offline verification scan to locate any corrupted files:
-```bash
-go run ./cmd verify --output=darkorbit-files
-```
+- `.github/workflows/ci.yml` runs on pushes to `main` and on pull requests: `go mod tidy -diff`, `gofmt`, `go vet` and `go test -race` on Linux, Windows and macOS, plus `golangci-lint`.
+- `.github/workflows/release.yml` runs when a `vX.Y.Z` tag is pushed, or manually from the Actions tab with a version input. It tests, builds Linux/macOS/Windows binaries for amd64 and arm64 with the version injected, and publishes them with `checksums.txt` as a GitHub release.
 
----
+## License
 
-## Build and Release Guide
-
-### Requirements
-- **Go:** Version `1.22` or later.
-
-### Local Compilation
-To compile a native standalone executable for your current operating system:
-```bash
-go build -o darkorbit-downloader.exe ./cmd
-```
-
-To compile a production build with a custom version string injected into the binary:
-```bash
-go build -ldflags "-X darkorbit-resource-downloader/internal/app.Version=v1.2.3" -o darkorbit-downloader.exe ./cmd
-```
-
----
-
-## GitHub Actions Release (CI/CD)
-
-The project includes an advanced, pre-configured GitHub Actions workflow located in `.github/workflows/release.yml` that handles versioning and building automatically entirely on GitHub.
-
-### How to Release
-You can trigger a release using two flexible methods:
-
-1. **Tag-Based Release (Automatic):**
-   Simply tag a commit and push it to your repository:
-   ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
-   The workflow will trigger, compile the Windows `.exe` with the version string `v1.0.0` injected, create a new GitHub Release page, and upload the binary asset.
-
-2. **UI-Based Release (Manual):**
-   - Navigate to the **Actions** tab on your GitHub Repository page.
-   - Select the **Release** workflow from the left sidebar.
-   - Click the **Run workflow** dropdown on the right.
-   - Input your desired version string (e.g. `1.1.0` or `v1.1.0`) and optional release notes.
-   - Click **Run workflow**. The pipeline will automatically create the Git tag on GitHub, build the binary, and publish the release.
-
----
-
-## Technical Architecture & Design
-
-### Dynamic Concurrency & Rate-Limiting
-When syncing tens of thousands of resources, web servers often respond with HTTP `429` or `503` rate limits. The Downloader addresses this with two layers of defense:
-1. **Adaptive Pacer:** Enforces a thread-safe delay interval (`--request-interval`) between individual HTTP requests. If a request is throttled, the pacer dynamically applies a temporary cooldown backing off further requests.
-2. **Dynamic Concurrency Tuner:** Modulates the concurrent worker count. When multiple HTTP errors occur, workers are dynamically paused, reducing concurrent pressure. As soon as a successful request streak is established, concurrency is restored.
-
-### File Verification
-The mirror uses local manifest metadata files to build exact file integrity mappings. If a file exists locally, the downloader verifies its MD5/SHA manifest hash against the actual file bytes. If the hash matches, the download is skipped, saving bandwidth. Changes to server-side file versions are automatically detected via hash updates or URL query version changes (`?__cv=...`).
-
----
-
-## Running Tests
-
-Verify the entire integrity and downloader subsystems by running the test suite:
-```bash
-go test ./... -v
-```
+Not yet specified.
