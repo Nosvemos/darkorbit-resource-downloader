@@ -533,7 +533,7 @@ func CanonicalLanguageCode(code string) string {
 		return ""
 	}
 	for _, r := range code {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r == '_' || r == '-') {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && r != '_' && r != '-' {
 			return ""
 		}
 	}

@@ -51,7 +51,7 @@ func Load(outputDir string) (*State, error) {
 
 	var st State
 	if err := json.Unmarshal(data, &st); err != nil {
-		return newState(), fmt.Errorf("%w: %s: %v", ErrCorrupt, filePath, err)
+		return newState(), fmt.Errorf("%w: %s: %w", ErrCorrupt, filePath, err)
 	}
 	if st.Resources == nil {
 		st.Resources = map[string]StateEntry{}
