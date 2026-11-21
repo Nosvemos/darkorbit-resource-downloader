@@ -11,8 +11,14 @@
 # Go build outputs
 /app
 /app.exe
+/darkorbit-downloader
+/bin/
+/dist/
+*.exe
 *.test
 coverage.out
+cover.out
+*.coverprofile
 
 # Editor / OS noise
 .DS_Store

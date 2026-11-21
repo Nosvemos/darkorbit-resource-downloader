@@ -1,2 +1,33 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Shell scripts must keep LF endings to run on Unix
+*.sh text eol=lf
+
+# Go sources and module files stay LF on every OS, so gofmt and
+# `go mod tidy -diff` agree on Windows checkouts with core.autocrlf
+*.go text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
+
+# Binary files: never diff or normalize
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.tar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.swf binary
+*.mp3 binary
+*.ogg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
