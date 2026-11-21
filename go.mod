@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/mattn/go-isatty v0.0.20
+	github.com/mattn/go-isatty v0.0.24
 	github.com/muesli/termenv v0.16.0
 )
 
